@@ -1,0 +1,467 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>정보지원대 침투전</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=JetBrains+Mono:wght@400;700&family=Noto+Sans+KR:wght@400;500;700&display=swap">
+<style>
+/* Layout: one narrow console column. Top: mission header. Middle: HUD (phase steps + trace meter), stage that swaps per phase. Bottom: operation log. */
+:root{
+  --bg:#0c1117; --panel:#131b24; --panel2:#18232f; --line:#263341;
+  --fg:#dce7ef; --dim:#8196a7; --ice:#8fd3ff; --ice-d:#12384f;
+  --warn:#ff7a45; --ok:#7fe3b0; --bad:#ff4d5e;
+  --f-disp:'Black Han Sans','Noto Sans KR',sans-serif;
+  --f-body:'Noto Sans KR',system-ui,-apple-system,sans-serif;
+  --f-mono:'JetBrains Mono',ui-monospace,Menlo,monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:15px/1.6 var(--f-body);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:20px 40px;min-height:100vh}
+.app{max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+button{font:inherit;color:inherit;cursor:pointer}
+:focus-visible{outline:2px solid var(--ice);outline-offset:2px}
+h1,h2{margin:0;text-wrap:balance}
+.top{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:14px}
+.tag{font:700 11px var(--f-mono);letter-spacing:.14em;color:var(--ice);text-transform:uppercase}
+h1{font:400 clamp(28px,7vw,40px)/1.1 var(--f-disp);letter-spacing:.02em}
+.best{font:400 12px var(--f-mono);color:var(--dim)}
+.best b{color:var(--fg);font-weight:700}
+
+.hud{display:grid;gap:12px;background:var(--panel);border:1px solid var(--line);padding:12px 14px}
+.steps{list-style:none;margin:0;padding:0;display:flex;gap:6px}
+.steps li{flex:1;font:700 12px var(--f-mono);letter-spacing:.06em;color:var(--dim);border-top:3px solid var(--line);padding-top:6px}
+.steps li.active{color:var(--ice);border-color:var(--ice)}
+.steps li.done{color:var(--ok);border-color:var(--ok)}
+.trace{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;font:700 12px var(--f-mono)}
+.trace label{color:var(--dim);letter-spacing:.06em}
+.tbar{height:10px;background:var(--bg);border:1px solid var(--line);overflow:hidden}
+.tbar i{display:block;height:100%;width:0;background:var(--ice);transition:width .12s linear,background .3s}
+.hud.hot .tbar i{background:var(--warn)}
+.hud.crit .tbar i{background:var(--bad)}
+.trace b{min-width:3.4em;text-align:right;font-variant-numeric:tabular-nums}
+
+.stage{background:var(--panel);border:1px solid var(--line);padding:20px;min-height:340px}
+.stage.hit{animation:hit .3s}
+@media (prefers-reduced-motion:no-preference){@keyframes hit{20%{transform:translateX(-5px)}60%{transform:translateX(5px)}}}
+.screen{display:flex;flex-direction:column;gap:16px}
+.screen[hidden]{display:none}
+h2{font:400 22px/1.2 var(--f-disp)}
+.hint{margin:0;color:var(--dim);font-size:14px;max-width:62ch}
+.lead{margin:0;max-width:62ch}
+.lead em{font-style:normal;color:var(--ice)}
+
+.label{font:700 11px var(--f-mono);letter-spacing:.12em;color:var(--dim);text-transform:uppercase;margin:0}
+.units{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px}
+.unit{text-align:left;background:var(--panel2);border:1px solid var(--line);padding:12px 14px;display:flex;flex-direction:column;gap:2px}
+.unit .role{font:700 11px var(--f-mono);color:var(--dim);letter-spacing:.08em}
+.unit .nm{font:400 20px var(--f-disp)}
+.unit .ds{font-size:13px;color:var(--dim)}
+.unit[aria-checked="true"]{border-color:var(--ice);background:var(--ice-d)}
+.unit[aria-checked="true"] .role{color:var(--ice)}
+.seg{display:flex;gap:6px;flex-wrap:wrap}
+.seg button{background:var(--panel2);border:1px solid var(--line);padding:6px 16px;font-size:14px}
+.seg button[aria-checked="true"]{border-color:var(--ice);background:var(--ice-d);color:var(--ice)}
+
+.act{background:var(--ice);color:#06202f;border:0;font:700 16px var(--f-body);padding:14px 20px;min-height:52px;touch-action:manipulation;user-select:none;-webkit-user-select:none}
+.act:hover{filter:brightness(1.08)}
+.act.ghost{background:transparent;color:var(--fg);border:1px solid var(--line)}
+.act.on{background:var(--ok)}
+.row{display:flex;gap:10px;flex-wrap:wrap}
+.row .act{flex:1 1 160px}
+
+.layers{list-style:none;margin:0;padding:0;display:flex;gap:6px;flex-wrap:wrap}
+.layers li{font:700 12px var(--f-mono);padding:4px 10px;border:1px solid var(--line);color:var(--dim)}
+.layers li.on{border-color:var(--ice);color:var(--ice)}
+.layers li.done{border-color:var(--ok);color:var(--ok)}
+.bar{position:relative;height:56px;background:var(--bg);border:1px solid var(--line)}
+.zone{position:absolute;top:0;bottom:0;background:rgba(143,211,255,.22);border-left:2px solid var(--ice);border-right:2px solid var(--ice)}
+.mark{position:absolute;top:-6px;bottom:-6px;width:4px;margin-left:-2px;background:var(--fg)}
+
+.scanbox{position:relative;overflow:hidden;background:var(--bg);border:1px solid var(--line);padding:10px}
+.grid{display:grid;grid-template-columns:repeat(16,1fr);gap:4px}
+.grid i{aspect-ratio:1;background:var(--panel2);border:1px solid var(--line)}
+.grid i.lit{background:var(--ice);border-color:var(--ice)}
+.sweep{position:absolute;top:0;bottom:0;left:0;width:3px;background:var(--warn);opacity:0}
+.scanbox[data-st="warn"]{border-color:var(--warn)}
+.scanbox[data-st="warn"] .sweep{opacity:.5}
+.scanbox[data-st="scan"]{border-color:var(--bad);background:#1c1014}
+.scanbox[data-st="scan"] .sweep{opacity:1;background:var(--bad);box-shadow:0 0 18px var(--bad)}
+.pbar{height:10px;background:var(--bg);border:1px solid var(--line)}
+.pbar i{display:block;height:100%;width:0;background:var(--ok)}
+.pstat{display:flex;justify-content:space-between;font:700 13px var(--f-mono)}
+.pstat .st-warn{color:var(--warn)}.pstat .st-scan{color:var(--bad)}
+
+.hops{display:flex;gap:6px}
+.hops span{flex:1;text-align:center;font:700 12px var(--f-mono);padding:4px;border:1px solid var(--line);color:var(--dim)}
+.hops span.on{border-color:var(--ice);color:var(--ice)}
+.hops span.done{border-color:var(--ok);color:var(--ok)}
+.seq{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+.seq i{font:700 28px var(--f-mono);font-style:normal;width:56px;height:56px;display:grid;place-items:center;background:var(--bg);border:1px solid var(--line);color:var(--dim)}
+.seq i.cur{border-color:var(--ice);color:var(--ice);background:var(--ice-d)}
+.seq i.ok{border-color:var(--ok);color:var(--ok)}
+.dpad{display:grid;grid-template-columns:repeat(3,64px);grid-template-rows:repeat(2,56px);gap:6px;justify-content:center}
+.dpad button{background:var(--panel2);border:1px solid var(--line);font:700 22px var(--f-mono);touch-action:manipulation}
+.dpad button:active{background:var(--ice-d);border-color:var(--ice)}
+.dpad .u{grid-column:2;grid-row:1}.dpad .l{grid-column:1;grid-row:2}.dpad .d{grid-column:2;grid-row:2}.dpad .r{grid-column:3;grid-row:2}
+
+.rank{font:400 72px/1 var(--f-disp)}
+.rank.win{color:var(--ok)}.rank.lose{color:var(--bad)}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:10px;margin:0}
+.stats div{background:var(--panel2);border:1px solid var(--line);padding:8px 12px}
+.stats dt{font:700 11px var(--f-mono);color:var(--dim);letter-spacing:.08em}
+.stats dd{margin:0;font:700 20px var(--f-mono);font-variant-numeric:tabular-nums}
+
+.log h2{font:700 11px var(--f-mono);letter-spacing:.12em;color:var(--dim);text-transform:uppercase;margin-bottom:6px}
+#log{list-style:none;margin:0;padding:0;font:400 12px/1.7 var(--f-mono);color:var(--dim);max-height:160px;overflow:auto;border-top:1px solid var(--line);padding-top:8px}
+#log li.ok{color:var(--ok)}#log li.bad{color:var(--warn)}
+#log li:first-child{color:var(--fg)}
+#log li.ok:first-child{color:var(--ok)}#log li.bad:first-child{color:var(--warn)}
+</style>
+
+<div class="app">
+  <header class="top">
+    <div><div class="tag">정보지원대 · 작전 단말</div><h1>침투전</h1></div>
+    <div class="best" id="best"></div>
+  </header>
+
+  <section class="hud" id="hud" hidden>
+    <ol class="steps" id="steps">
+      <li>1 침투</li><li>2 업로드</li><li>3 탈출</li>
+    </ol>
+    <div class="trace"><label for="tnum">역추적</label><div class="tbar"><i id="tfill"></i></div><b id="tnum">0%</b></div>
+  </section>
+
+  <section class="stage" id="stage">
+    <div class="screen" data-screen="brief">
+      <h2>작전 브리핑</h2>
+      <p class="lead">목표는 적성 관제망 <em>HX-9</em>. 방화벽 세 겹을 뚫고 바이러스 <em>〈모래시계〉</em>를 업로드한 뒤, 역추적이 완료되기 전에 릴레이를 끊고 빠져나오십시오. 역추적이 100%에 닿으면 작전은 실패입니다.</p>
+      <p class="label">유닛 선택</p>
+      <div class="units" id="units" role="radiogroup" aria-label="유닛 선택"></div>
+      <p class="label">작전 강도</p>
+      <div class="seg" id="diffs" role="radiogroup" aria-label="작전 강도"></div>
+      <button class="act" id="go" type="button">작전 개시</button>
+    </div>
+
+    <div class="screen" data-screen="p1" hidden>
+      <h2>방화벽 돌파</h2>
+      <p class="hint">흰 표식이 밝은 구간 안에 있을 때 락온하세요. 스페이스바 또는 버튼. 빗나가면 역추적이 오르고 구간이 옮겨집니다.</p>
+      <ol class="layers" id="layers"></ol>
+      <div class="bar"><i class="zone" id="zone"></i><i class="mark" id="mark"></i></div>
+      <button class="act" id="lock" type="button">락온</button>
+    </div>
+
+    <div class="screen" data-screen="p2" hidden>
+      <h2>〈모래시계〉 업로드</h2>
+      <p class="hint">버튼(스페이스바)을 누르는 동안 전송됩니다. 스캔선이 붉게 변하면 손을 떼세요. 스캔 중에 전송하면 역추적이 급상승합니다.</p>
+      <div class="scanbox" id="scanbox" data-st="idle"><div class="grid" id="grid"></div><i class="sweep" id="sweep"></i></div>
+      <div class="pbar"><i id="pfill"></i></div>
+      <div class="pstat"><span id="pstate">전송 대기</span><b id="pnum">0%</b></div>
+      <button class="act" id="hold" type="button">누르고 있는 동안 전송</button>
+    </div>
+
+    <div class="screen" data-screen="p3" hidden>
+      <h2>접속 차단</h2>
+      <p class="hint">역추적이 점점 빨라집니다. 표시된 순서대로 입력해 릴레이 3개를 끊으세요. 방향키, WASD, 아래 버튼 모두 사용할 수 있습니다.</p>
+      <div class="hops" id="hops"></div>
+      <div class="seq" id="seq"></div>
+      <div class="dpad">
+        <button class="u" data-d="up" type="button" aria-label="위">↑</button>
+        <button class="l" data-d="left" type="button" aria-label="왼쪽">←</button>
+        <button class="d" data-d="down" type="button" aria-label="아래">↓</button>
+        <button class="r" data-d="right" type="button" aria-label="오른쪽">→</button>
+      </div>
+    </div>
+
+    <div class="screen" data-screen="result" hidden>
+      <div class="rank" id="rRank">S</div>
+      <h2 id="rTitle"></h2>
+      <p class="lead" id="rMsg"></p>
+      <dl class="stats">
+        <div><dt>소요 시간</dt><dd id="rTime">0</dd></div>
+        <div><dt>역추적</dt><dd id="rTrace">0</dd></div>
+        <div><dt>점수</dt><dd id="rScore">0</dd></div>
+      </dl>
+      <div class="row">
+        <button class="act" id="again" type="button">같은 설정으로 재출격</button>
+        <button class="act ghost" id="back" type="button">브리핑으로</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="log">
+    <h2>작전 로그</h2>
+    <ol id="log" aria-live="polite"></ol>
+  </section>
+</div>
+
+<script>
+(function(){
+  var $=function(s){return document.querySelector(s)};
+  var $$=function(s){return Array.prototype.slice.call(document.querySelectorAll(s))};
+
+  var UNITS=[
+    {name:'실루엣',role:'은닉형',desc:'역추적 증가량 -30%',traceMul:0.7,zoneMul:1,upMul:1},
+    {name:'드릴',role:'돌파형',desc:'락온 구간 +35%',traceMul:1,zoneMul:1.35,upMul:1},
+    {name:'펄스',role:'전송형',desc:'업로드 속도 +30%',traceMul:1,zoneMul:1,upMul:1.3}
+  ];
+  var DIFFS=[{name:'정찰',d:0.8},{name:'작전',d:1},{name:'최전선',d:1.3}];
+  var LAYERS=['외곽 방화벽','인증 게이트','코어 ICE'];
+  var DIRS={up:'↑',down:'↓',left:'←',right:'→'};
+  var DKEYS=['up','down','left','right'];
+  var FAIL_MSG=[
+    '방화벽 ICE가 접속 위치를 특정했습니다.',
+    '업로드 도중 탐지 스캔에 포착되었습니다.',
+    '탈출 경로를 따라잡혔습니다. 접속이 역추적되었습니다.'
+  ];
+
+  var selU=0, selD=1, G=null, last=0, raf=0;
+  var rnd=function(a,b){return a+Math.random()*(b-a)};
+  var tri=function(x){var f=((x%2)+2)%2;return f<1?f:2-f};
+  var fmt=function(t){var s=Math.floor(t);return ('0'+Math.floor(s/60)).slice(-2)+':'+('0'+(s%60)).slice(-2)};
+
+  function readBest(){try{return parseInt(localStorage.getItem('isw-best'),10)||0}catch(e){return 0}}
+  function writeBest(n){try{localStorage.setItem('isw-best',String(n))}catch(e){}}
+  function showBest(){var b=readBest();$('#best').innerHTML='최고 기록 <b>'+(b?b.toLocaleString('ko-KR'):'없음')+'</b>'}
+
+  function show(name){
+    $$('.screen').forEach(function(s){s.hidden=s.getAttribute('data-screen')!==name});
+    $('#hud').hidden=!/^p[123]$/.test(name);
+  }
+
+  function log(msg,cls){
+    var li=document.createElement('li');
+    li.textContent='[T+'+fmt(G?G.t:0)+'] '+msg;
+    if(cls)li.className=cls;
+    var ol=$('#log');ol.insertBefore(li,ol.firstChild);
+    while(ol.children.length>40)ol.removeChild(ol.lastChild);
+  }
+
+  /* ---------- briefing ---------- */
+  function buildBrief(){
+    $('#units').innerHTML=UNITS.map(function(u,i){
+      return '<button type="button" class="unit" role="radio" data-i="'+i+'" aria-checked="'+(i===selU)+'"><span class="role">'+u.role+'</span><span class="nm">'+u.name+'</span><span class="ds">'+u.desc+'</span></button>';
+    }).join('');
+    $('#diffs').innerHTML=DIFFS.map(function(d,i){
+      return '<button type="button" role="radio" data-i="'+i+'" aria-checked="'+(i===selD)+'">'+d.name+'</button>';
+    }).join('');
+  }
+  $('#units').addEventListener('click',function(e){var b=e.target.closest('.unit');if(!b)return;selU=+b.getAttribute('data-i');buildBrief()});
+  $('#diffs').addEventListener('click',function(e){var b=e.target.closest('button');if(!b)return;selD=+b.getAttribute('data-i');buildBrief()});
+
+  /* ---------- core ---------- */
+  function setTrace(){
+    var t=G.trace;
+    $('#tfill').style.width=t+'%';
+    $('#tnum').textContent=Math.round(t)+'%';
+    var h=$('#hud');h.classList.toggle('hot',t>=50&&t<80);h.classList.toggle('crit',t>=80);
+  }
+  function hit(){var s=$('#stage');s.classList.remove('hit');void s.offsetWidth;s.classList.add('hit')}
+  function addTrace(n,flash){
+    if(!G||!G.run)return;
+    G.trace=Math.min(100,G.trace+n*G.u.traceMul);
+    setTrace();
+    if(flash!==false)hit();
+    if(G.trace>=100)end(false);
+  }
+  function creep(dt){
+    var r;
+    if(G.phase===0)r=0.5;
+    else if(G.phase===1)r=0.7;
+    else r=3.2+(G.t-G.p3.t0)*0.3;
+    addTrace(r*G.d*dt,false);
+  }
+  function tick(ts){
+    if(!G||!G.run)return;
+    var dt=Math.min(0.05,(ts-last)/1000);last=ts;
+    G.t+=dt;
+    creep(dt);
+    if(!G.run)return;
+    if(G.phase===0)p1Update(dt);else if(G.phase===1)p2Update(dt);
+    if(G.run)raf=requestAnimationFrame(tick);
+  }
+  function enterPhase(i){
+    G.phase=i;
+    $$('#steps li').forEach(function(li,k){li.className=k<i?'done':k===i?'active':''});
+    show('p'+(i+1));
+    if(document.activeElement&&document.activeElement.blur)document.activeElement.blur();
+    if(i===0)p1Enter();else if(i===1)p2Enter();else p3Enter();
+  }
+  function start(){
+    var u=UNITS[selU],d=DIFFS[selD].d;
+    G={u:u,d:d,phase:0,trace:0,t:0,run:true};
+    $('#log').innerHTML='';
+    setTrace();
+    log(u.name+' 접속 개시. 적성 관제망 HX-9 외곽에 도달.');
+    enterPhase(0);
+    last=performance.now();
+    cancelAnimationFrame(raf);
+    raf=requestAnimationFrame(tick);
+  }
+  function end(win){
+    G.run=false;cancelAnimationFrame(raf);
+    var trace=Math.round(G.trace);
+    var rank=trace<25?'S':trace<50?'A':trace<75?'B':'C';
+    var score=win?Math.round((1000+(100-G.trace)*12+Math.max(0,75-G.t)*14)*G.d):0;
+    var best=readBest(),isBest=win&&score>best;
+    if(isBest){writeBest(score);showBest()}
+    var r=$('#rRank');
+    r.textContent=win?rank:'×';
+    r.className='rank '+(win?'win':'lose');
+    $('#rTitle').textContent=win?'접속 차단 성공':'역추적 당함';
+    $('#rMsg').textContent=win
+      ?'〈모래시계〉가 HX-9 내부에 안착했고, 흔적은 릴레이와 함께 끊겼습니다.'+(isBest?' 최고 기록을 경신했습니다.':'')
+      :FAIL_MSG[G.phase];
+    $('#rTime').textContent=fmt(G.t);
+    $('#rTrace').textContent=trace+'%';
+    $('#rScore').textContent=win?score.toLocaleString('ko-KR'):'—';
+    log(win?'탈출 완료. 작전 종료.':'역추적 완료. 접속 단절.',win?'ok':'bad');
+    hold(false);
+    show('result');
+    $('#hud').hidden=false;
+  }
+
+  /* ---------- phase 1: breach ---------- */
+  function p1Enter(){
+    G.p1={i:0,tm:rnd(0,2),zone:0,w:0,speed:0};
+    $('#layers').innerHTML=LAYERS.map(function(n,i){return '<li>'+n+'</li>'}).join('');
+    p1Layer();
+  }
+  function p1Place(){
+    var p=G.p1;
+    p.zone=rnd(0.04,0.96-p.w);
+    $('#zone').style.left=(p.zone*100)+'%';
+    $('#zone').style.width=(p.w*100)+'%';
+  }
+  function p1Layer(){
+    var p=G.p1,i=p.i;
+    var w=[0.26,0.2,0.16][i]*G.u.zoneMul/Math.sqrt(G.d);
+    p.w=Math.min(0.42,Math.max(0.09,w));
+    p.speed=[0.5,0.7,0.9][i]*G.d;
+    p1Place();
+    $$('#layers li').forEach(function(li,k){li.className=k<i?'done':k===i?'on':''});
+  }
+  function p1Update(dt){
+    var p=G.p1;p.tm+=dt*p.speed;
+    $('#mark').style.left=(tri(p.tm)*100)+'%';
+  }
+  function lock(){
+    if(!G||!G.run||G.phase!==0)return;
+    var p=G.p1,m=tri(p.tm);
+    if(m>=p.zone&&m<=p.zone+p.w){
+      log(LAYERS[p.i]+' 돌파.','ok');
+      p.i++;
+      if(p.i>=LAYERS.length){log('방어망 전층 돌파. 업로드 채널을 엽니다.','ok');enterPhase(1)}
+      else p1Layer();
+    }else{
+      log(LAYERS[p.i]+' 락온 실패. 경보 신호 감지.','bad');
+      addTrace(14);
+      if(G.run)p1Place();
+    }
+  }
+
+  /* ---------- phase 2: upload ---------- */
+  function p2Enter(){
+    G.p2={p:0,st:'idle',tm:rnd(1,1.8),hold:false};
+    var g='';for(var i=0;i<64;i++)g+='<i></i>';
+    $('#grid').innerHTML=g;
+    log('업로드 채널 개방. 〈모래시계〉 전송 가능.');
+    p2UI();
+  }
+  function p2UI(){
+    var p=G.p2;
+    $('#pfill').style.width=p.p+'%';
+    $('#pnum').textContent=Math.floor(p.p)+'%';
+    var cells=$$('#grid i'),n=Math.floor(p.p/100*cells.length);
+    cells.forEach(function(c,i){c.className=i<n?'lit':''});
+    var sb=$('#scanbox');sb.setAttribute('data-st',p.st);
+    var sw=$('#sweep');
+    sw.style.left=p.st==='scan'?((1-p.tm/0.8)*100)+'%':'0';
+    var ps=$('#pstate');
+    if(p.st==='scan'){ps.textContent='스캔 중 · 손을 떼세요';ps.className='st-scan'}
+    else if(p.st==='warn'){ps.textContent='스캔 접근 · 곧 중단';ps.className='st-warn'}
+    else{ps.textContent=p.hold?'전송 중':'전송 대기';ps.className=''}
+  }
+  function p2Update(dt){
+    var p=G.p2;
+    p.tm-=dt;
+    if(p.st==='idle'&&p.tm<=0){p.st='warn';p.tm=Math.max(0.55,0.95/G.d);log('탐지 스캔 접근 중.','bad')}
+    else if(p.st==='warn'&&p.tm<=0){p.st='scan';p.tm=0.8}
+    else if(p.st==='scan'&&p.tm<=0){p.st='idle';p.tm=rnd(1.3,2.5)/Math.sqrt(G.d)}
+    if(p.hold){
+      p.p=Math.min(100,p.p+16*G.u.upMul*dt);
+      if(p.st==='scan'){addTrace(30*G.d*dt,false);if(!G.run)return}
+    }
+    p2UI();
+    if(p.p>=100){
+      p.hold=false;
+      log('〈모래시계〉 업로드 완료. 즉시 이탈합니다.','ok');
+      enterPhase(2);
+    }
+  }
+  function hold(v){
+    $('#hold').classList.toggle('on',!!v);
+    if(!G||!G.p2)return;
+    G.p2.hold=!!(v&&G.run&&G.phase===1);
+  }
+
+  /* ---------- phase 3: escape ---------- */
+  function p3Enter(){
+    G.p3={hop:0,idx:0,seq:[],t0:G.t};
+    log('탈출 개시. 역추적 카운터 가동.','bad');
+    p3Gen();
+  }
+  function p3Gen(){
+    var s=[];for(var i=0;i<5;i++)s.push(DKEYS[Math.floor(Math.random()*4)]);
+    G.p3.seq=s;G.p3.idx=0;p3UI();
+  }
+  function p3UI(){
+    var p=G.p3;
+    $('#hops').innerHTML=[0,1,2].map(function(h){return '<span class="'+(h<p.hop?'done':h===p.hop?'on':'')+'">릴레이 '+(h+1)+'</span>'}).join('');
+    $('#seq').innerHTML=p.seq.map(function(d,i){return '<i class="'+(i<p.idx?'ok':i===p.idx?'cur':'')+'">'+DIRS[d]+'</i>'}).join('');
+  }
+  function press(d){
+    if(!G||!G.run||G.phase!==2)return;
+    var p=G.p3;
+    if(p.seq[p.idx]===d){
+      p.idx++;
+      if(p.idx>=p.seq.length){
+        p.hop++;log('릴레이 '+p.hop+' 절단.','ok');
+        if(p.hop>=3){end(true);return}
+        p3Gen();return;
+      }
+    }else{
+      addTrace(9);
+      p.idx=Math.max(0,p.idx-1);
+    }
+    if(G.run)p3UI();
+  }
+
+  /* ---------- input ---------- */
+  var KEYMAP={ArrowUp:'up',KeyW:'up',ArrowDown:'down',KeyS:'down',ArrowLeft:'left',KeyA:'left',ArrowRight:'right',KeyD:'right'};
+  addEventListener('keydown',function(e){
+    if(!G||!G.run)return;
+    if(e.code==='Space'){
+      if(G.phase===0){e.preventDefault();if(!e.repeat)lock()}
+      else if(G.phase===1){e.preventDefault();if(!e.repeat)hold(true)}
+      return;
+    }
+    if(G.phase===2&&KEYMAP[e.code]){e.preventDefault();if(!e.repeat)press(KEYMAP[e.code])}
+  });
+  addEventListener('keyup',function(e){
+    if(e.code==='Space'){if(G&&G.run&&G.phase<=1)e.preventDefault();hold(false)}
+  });
+  addEventListener('blur',function(){hold(false)});
+
+  $('#go').addEventListener('click',start);
+  $('#again').addEventListener('click',start);
+  $('#back').addEventListener('click',function(){show('brief')});
+  $('#lock').addEventListener('click',lock);
+  var hb=$('#hold');
+  hb.addEventListener('pointerdown',function(e){e.preventDefault();hold(true)});
+  ['pointerup','pointercancel','pointerleave'].forEach(function(t){hb.addEventListener(t,function(){hold(false)})});
+  hb.addEventListener('contextmenu',function(e){e.preventDefault()});
+  $$('.dpad button').forEach(function(b){b.addEventListener('click',function(){press(b.getAttribute('data-d'))})});
+
+  buildBrief();showBest();show('brief');
+})();
+</script>
+
+</body></html>
